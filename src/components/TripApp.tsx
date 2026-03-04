@@ -428,18 +428,24 @@ export default function TripApp({ tripId }: Props) {
         )}
       </header>
 
+      {/* Sticky trip name */}
+      <div className="sticky top-0 z-40 bg-default-50/90 backdrop-blur-md border-b border-default-200 px-4 py-2">
+        <div className="max-w-lg mx-auto">
+          <Input
+            placeholder="Trip name (e.g., Boracay 2026)"
+            value={trip.name}
+            onChange={(e) => handleNameChange(e.target.value)}
+            size="sm"
+            variant="bordered"
+            classNames={{
+              inputWrapper: "bg-white",
+            }}
+          />
+        </div>
+      </div>
+
       {/* Main content */}
       <main className="max-w-lg mx-auto px-4 py-5 space-y-4">
-        <Input
-          placeholder="Trip name (e.g., Boracay 2026)"
-          value={trip.name}
-          onChange={(e) => handleNameChange(e.target.value)}
-          size="lg"
-          variant="bordered"
-          classNames={{
-            inputWrapper: "bg-white",
-          }}
-        />
 
         {/* Everyone can add people */}
         <PeopleManager
