@@ -94,6 +94,21 @@ export default function TripApp({ tripId }: Props) {
     }
   }, [loading, notFound, trip.people.length, isCreator, tripId]);
 
+  // Auto-clear identity if current user was removed from the trip
+  useEffect(() => {
+    if (
+      !loading &&
+      currentUserId &&
+      trip.people.length > 0 &&
+      !trip.people.some((p) => p.id === currentUserId)
+    ) {
+      setCurrentUserId(null);
+      setIsCreator(false);
+      localStorage.removeItem(`splittayo-user-${tripId}`);
+      localStorage.removeItem(`splittayo-creator-${tripId}`);
+    }
+  }, [loading, currentUserId, trip.people, tripId]);
+
   // Cleanup nameTimeout on unmount
   useEffect(() => {
     return () => {
