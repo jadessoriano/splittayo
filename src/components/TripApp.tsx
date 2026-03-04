@@ -455,7 +455,11 @@ export default function TripApp({ tripId }: Props) {
             expenses={trip.expenses}
             people={trip.people}
             onRemove={removeExpense}
-            onEdit={setEditingExpense}
+            onEdit={(expense) => {
+              // Force re-trigger even if same expense by clearing first
+              setEditingExpense(null);
+              requestAnimationFrame(() => setEditingExpense(expense));
+            }}
             editingId={editingExpense?.id}
           />
         )}

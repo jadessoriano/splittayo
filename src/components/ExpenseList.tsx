@@ -95,7 +95,9 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
                     <>
                       {onEdit && (
                         <button
-                          onClick={() => onEdit(expense)}
+                          onClick={() => {
+                            onEdit(expense);
+                          }}
                           className="text-default-400 hover:text-primary transition text-sm"
                         >
                           &#9998;
