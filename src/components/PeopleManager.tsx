@@ -1,0 +1,77 @@
+"use client";
+
+import { useState } from "react";
+import { Card, CardBody, Chip, Input } from "@heroui/react";
+import { Person } from "@/lib/types";
+
+interface Props {
+  people: Person[];
+  onAdd: (name: string) => void;
+  onRemove: (id: string) => void;
+  readOnly?: boolean;
+}
+
+export default function PeopleManager({
+  people,
+  onAdd,
+  onRemove,
+  readOnly,
+}: Props) {
+  const [name, setName] = useState("");
+
+  const handleAdd = () => {
+    const trimmed = name.trim();
+    if (!trimmed) return;
+    if (people.some((p) => p.name.toLowerCase() === trimmed.toLowerCase()))
+      return;
+    onAdd(trimmed);
+    setName("");
+  };
+
+  return (
+    <Card shadow="sm">
+      <CardBody className="gap-3">
+        <h2 className="font-semibold text-default-800">People</h2>
+
+        {!readOnly && (
+          <Input
+            placeholder="Type a name and press Enter"
+            value={name}
+            onChange={(e) => setName(e.target.value)}
+            onKeyDown={(e) => e.key === "Enter" && handleAdd()}
+            size="sm"
+            variant="bordered"
+            endContent={
+              name.trim() && (
+                <button
+                  onClick={handleAdd}
+                  className="text-secondary-500 hover:text-secondary-600 font-semibold text-sm px-1"
+                >
+                  Add
+                </button>
+              )
+            }
+          />
+        )}
+
+        <div className="flex flex-wrap gap-2">
+          {people.map((person) => (
+            <Chip
+              key={person.id}
+              color="secondary"
+              variant="flat"
+              onClose={readOnly ? undefined : () => onRemove(person.id)}
+            >
+              {person.name}
+            </Chip>
+          ))}
+          {people.length === 0 && (
+            <p className="text-default-400 text-sm">
+              Add at least 2 people to start
+            </p>
+          )}
+        </div>
+      </CardBody>
+    </Card>
+  );
+}
