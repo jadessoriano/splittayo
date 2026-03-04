@@ -102,16 +102,52 @@ export default function Settlement({ trip, tripId }: Props) {
 
   const captureReport = async () => {
     if (!reportRef.current) return;
+    const source = reportRef.current;
 
-    const canvas = await html2canvas(reportRef.current, {
-      backgroundColor: "#ffffff",
-      scale: 2,
+    // Collect computed styles from the real DOM before html2canvas clones
+    const sourceEls = [source, ...Array.from(source.querySelectorAll("*"))];
+    const computedStyles = sourceEls.map((el) => {
+      const s = window.getComputedStyle(el);
+      const styles: Record<string, string> = {};
+      for (let i = 0; i < s.length; i++) {
+        styles[s[i]] = s.getPropertyValue(s[i]);
+      }
+      return styles;
     });
 
-    const link = document.createElement("a");
-    link.download = `${trip.name || "trip"}-breakdown.png`;
-    link.href = canvas.toDataURL("image/png");
-    link.click();
+    const canvas = await html2canvas(source, {
+      backgroundColor: "#ffffff",
+      scale: 2,
+      scrollY: -window.scrollY,
+      windowHeight: source.scrollHeight + 200,
+      onclone: (_doc: Document, el: HTMLElement) => {
+        // Remove all stylesheets so html2canvas never parses lab() colors
+        const sheets = _doc.querySelectorAll('style, link[rel="stylesheet"]');
+        sheets.forEach((s) => s.remove());
+
+        // Apply pre-collected computed styles as inline styles
+        const clonedEls = [el, ...Array.from(el.querySelectorAll("*"))] as HTMLElement[];
+        for (let i = 0; i < clonedEls.length; i++) {
+          const saved = computedStyles[i];
+          if (!saved) continue;
+          for (const [prop, val] of Object.entries(saved)) {
+            clonedEls[i].style.setProperty(prop, val);
+          }
+        }
+      },
+    });
+
+    canvas.toBlob((blob) => {
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.download = `${trip.name || "trip"}-breakdown.png`;
+      link.href = url;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      URL.revokeObjectURL(url);
+    }, "image/png");
   };
 
   const getName = (id: string) =>
@@ -228,7 +264,7 @@ export default function Settlement({ trip, tripId }: Props) {
                   key={i}
                   className="flex justify-between text-default-600 py-0.5"
                 >
-                  <span className="truncate mr-2">
+                  <span className="mr-2 break-words min-w-0">
                     {e.description} ({getName(e.paidBy)})
                   </span>
                   <span className="shrink-0">
