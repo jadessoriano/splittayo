@@ -1,11 +1,12 @@
 import { supabase, isSupabaseConfigured } from "./supabase";
-import { Trip, Person, Expense } from "./types";
+import { Trip, Person, Expense, SettledPayment } from "./types";
 
 interface TripRow {
   id: string;
   name: string;
   people: Person[];
   expenses: Expense[];
+  settled_payments: SettledPayment[];
   created_at: string;
   updated_at: string;
 }
@@ -58,6 +59,7 @@ export async function getTrip(id: string): Promise<Trip | null> {
     name: data.name,
     people: data.people || [],
     expenses: data.expenses || [],
+    settledPayments: data.settled_payments || [],
   };
 }
 
@@ -172,6 +174,42 @@ export async function createTripWithPeople(
   return data.id;
 }
 
+export async function markTripSettlement(
+  tripId: string,
+  settlement: SettledPayment
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("mark_trip_settlement", {
+    p_trip_id: tripId,
+    p_settlement: settlement,
+  });
+
+  if (error) {
+    console.error("Error marking settlement:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function unmarkTripSettlement(
+  tripId: string,
+  settlementId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("unmark_trip_settlement", {
+    p_trip_id: tripId,
+    p_settlement_id: settlementId,
+  });
+
+  if (error) {
+    console.error("Error unmarking settlement:", error);
+    return false;
+  }
+  return true;
+}
+
 export function subscribeToTrip(
   id: string,
   onUpdate: (trip: Trip) => void
@@ -194,6 +232,7 @@ export function subscribeToTrip(
           name: data.name,
           people: data.people || [],
           expenses: data.expenses || [],
+          settledPayments: data.settled_payments || [],
         });
       }
     )
@@ -211,6 +250,7 @@ export function subscribeToTrip(
                 name: data.name,
                 people: data.people || [],
                 expenses: data.expenses || [],
+                settledPayments: data.settled_payments || [],
               });
             }
           });

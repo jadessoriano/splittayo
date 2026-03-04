@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardBody, Chip, Input, Spinner } from "@heroui/react";
-import { Trip, Person, Expense, getPayers } from "@/lib/types";
+import { Trip, Person, Expense, SettledPayment, getPayers } from "@/lib/types";
 import {
   getTrip,
   subscribeToTrip,
@@ -13,6 +13,8 @@ import {
   removeExpenseFromTrip,
   updateTripName,
   createTripWithPeople,
+  markTripSettlement,
+  unmarkTripSettlement,
 } from "@/lib/database";
 import PeopleManager from "./PeopleManager";
 import ExpenseForm from "./ExpenseForm";
@@ -45,6 +47,7 @@ export default function TripApp({ tripId }: Props) {
     name: "",
     people: [],
     expenses: [],
+    settledPayments: [],
   });
   const [loading, setLoading] = useState(true);
   const [notFound, setNotFound] = useState(false);
@@ -304,6 +307,45 @@ export default function TripApp({ tripId }: Props) {
     }
   };
 
+  const handleMarkSettled = async (from: string, to: string, amount: number) => {
+    const settlement: SettledPayment = {
+      id: crypto.randomUUID(),
+      from,
+      to,
+      amount,
+      settledAt: Date.now(),
+    };
+    // Optimistic update
+    setTrip((prev) => ({
+      ...prev,
+      settledPayments: [...(prev.settledPayments || []), settlement],
+    }));
+    pendingOps.current++;
+    const ok = await markTripSettlement(tripId, settlement);
+    if (!ok) {
+      setTrip((prev) => ({
+        ...prev,
+        settledPayments: (prev.settledPayments || []).filter((s) => s.id !== settlement.id),
+      }));
+      showError("Failed to mark as settled. Check your connection.");
+    }
+  };
+
+  const handleUnmarkSettled = async (settlementId: string) => {
+    const prev = trip.settledPayments || [];
+    // Optimistic update
+    setTrip((prev) => ({
+      ...prev,
+      settledPayments: (prev.settledPayments || []).filter((s) => s.id !== settlementId),
+    }));
+    pendingOps.current++;
+    const ok = await unmarkTripSettlement(tripId, settlementId);
+    if (!ok) {
+      setTrip((p) => ({ ...p, settledPayments: prev }));
+      showError("Failed to unmark settlement. Check your connection.");
+    }
+  };
+
   const handleSwitchIdentity = () => {
     setCurrentUserId(null);
     setIsCreator(false);
@@ -465,7 +507,13 @@ export default function TripApp({ tripId }: Props) {
         )}
 
         {trip.expenses.length > 0 && (
-          <Settlement trip={trip} tripId={tripId} />
+          <Settlement
+            trip={trip}
+            tripId={tripId}
+            settledPayments={trip.settledPayments || []}
+            onMarkSettled={handleMarkSettled}
+            onUnmarkSettled={handleUnmarkSettled}
+          />
         )}
       </main>
 

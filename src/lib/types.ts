@@ -14,12 +14,22 @@ export interface Expense {
   amount: number;
   paidBy: string | Payer[];
   splitBetween: string[];
+  category?: string;
+}
+
+export interface SettledPayment {
+  id: string;
+  from: string;
+  to: string;
+  amount: number;
+  settledAt: number;
 }
 
 export interface Trip {
   name: string;
   people: Person[];
   expenses: Expense[];
+  settledPayments?: SettledPayment[];
 }
 
 export interface Settlement {

@@ -21,6 +21,7 @@ create table trips (
   name text default '',
   people jsonb default '[]'::jsonb,
   expenses jsonb default '[]'::jsonb,
+  settled_payments jsonb default '[]'::jsonb,
   created_at timestamptz default now(),
   updated_at timestamptz default now()
 );
@@ -143,6 +144,32 @@ begin
   update trips
   set name = p_name,
       updated_at = now()
+  where id = p_trip_id;
+end;
+$$ language plpgsql;
+
+-- Mark settlement: atomic append to settled_payments array
+create or replace function mark_trip_settlement(p_trip_id text, p_settlement jsonb)
+returns void as $$
+begin
+  update trips
+  set settled_payments = coalesce(settled_payments, '[]'::jsonb) || jsonb_build_array(p_settlement),
+      updated_at = now()
+  where id = p_trip_id;
+end;
+$$ language plpgsql;
+
+-- Unmark settlement: atomic remove from settled_payments array
+create or replace function unmark_trip_settlement(p_trip_id text, p_settlement_id text)
+returns void as $$
+begin
+  update trips
+  set settled_payments = (
+    select coalesce(jsonb_agg(s), '[]'::jsonb)
+    from jsonb_array_elements(coalesce(settled_payments, '[]'::jsonb)) s
+    where s->>'id' != p_settlement_id
+  ),
+  updated_at = now()
   where id = p_trip_id;
 end;
 $$ language plpgsql;

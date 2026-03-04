@@ -2,25 +2,53 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button, Card, CardBody, Divider } from "@heroui/react";
-import { Trip, getPayers } from "@/lib/types";
+import { Trip, SettledPayment, getPayers } from "@/lib/types";
 import { minimizeTransactions, calculateBalances } from "@/lib/settle";
+import { CATEGORIES, getCategoryEmoji } from "@/data/categories";
+import { exportExpensesCsv, exportSettlementCsv, downloadCsv } from "@/lib/exportCsv";
 import QRCode from "qrcode";
 import html2canvas from "html2canvas";
 
 interface Props {
   trip: Trip;
   tripId: string;
+  settledPayments?: SettledPayment[];
+  onMarkSettled?: (from: string, to: string, amount: number) => void;
+  onUnmarkSettled?: (id: string) => void;
 }
 
-export default function Settlement({ trip, tripId }: Props) {
+export default function Settlement({ trip, tripId, settledPayments = [], onMarkSettled, onUnmarkSettled }: Props) {
   const [copied, setCopied] = useState(false);
   const [showReport, setShowReport] = useState(false);
   const [showQR, setShowQR] = useState(false);
   const [qrDataUrl, setQrDataUrl] = useState<string | null>(null);
+  const [confirmUnsettle, setConfirmUnsettle] = useState<string | null>(null);
   const reportRef = useRef<HTMLDivElement>(null);
 
   const settlements = minimizeTransactions(trip.people, trip.expenses);
   const balances = calculateBalances(trip.people, trip.expenses);
+
+  const isSettled = (from: string, to: string, amount: number) =>
+    settledPayments.some(
+      (sp) => sp.from === from && sp.to === to && Math.abs(sp.amount - amount) < 0.01
+    );
+
+  const getSettledId = (from: string, to: string, amount: number) =>
+    settledPayments.find(
+      (sp) => sp.from === from && sp.to === to && Math.abs(sp.amount - amount) < 0.01
+    )?.id;
+
+  const allSettled = settlements.length > 0 && settlements.every((s) => isSettled(s.from, s.to, s.amount));
+
+  const handleExportCsv = () => {
+    const expCsv = exportExpensesCsv(trip, trip.people);
+    downloadCsv(expCsv, `${trip.name || "trip"}-expenses.csv`);
+  };
+
+  const handleExportSettlementCsv = () => {
+    const csv = exportSettlementCsv(settlements, balances, trip.people);
+    downloadCsv(csv, `${trip.name || "trip"}-settlement.csv`);
+  };
 
   const formatAmount = (n: number) =>
     Math.abs(n).toLocaleString("en-PH", { minimumFractionDigits: 2 });
@@ -162,30 +190,82 @@ export default function Settlement({ trip, tripId }: Props) {
 
         {settlements.length === 0 ? (
           <p className="text-default-400 text-sm">Everyone is even!</p>
-        ) : (
+        ) : allSettled ? (
+          <div className="text-center p-4 bg-success-50 rounded-xl">
+            <p className="text-success-600 font-semibold text-lg">All settled!</p>
+            <p className="text-success-500 text-sm mt-1">Everyone has been paid.</p>
+          </div>
+        ) : null}
+
+        {settlements.length > 0 && (
           <div className="space-y-2">
-            {settlements.map((s, i) => (
-              <div
-                key={i}
-                className="flex items-center justify-between p-3 bg-warning-50 rounded-xl"
-              >
-                <span className="text-default-800 text-sm">
-                  <span className="font-semibold">{s.from}</span>
-                  <span className="mx-1.5 text-default-400">&rarr;</span>
-                  <span className="font-semibold">{s.to}</span>
-                </span>
-                <span className="font-bold text-warning-600">
-                  &#8369;{formatAmount(s.amount)}
-                </span>
-              </div>
-            ))}
+            {settlements.map((s, i) => {
+              const settled = isSettled(s.from, s.to, s.amount);
+              const settledId = getSettledId(s.from, s.to, s.amount);
+              return (
+                <div
+                  key={i}
+                  className={`flex items-center justify-between p-3 rounded-xl ${settled ? "bg-success-50" : "bg-warning-50"}`}
+                >
+                  <span className={`text-sm ${settled ? "line-through text-default-400" : "text-default-800"}`}>
+                    <span className="font-semibold">{s.from}</span>
+                    <span className="mx-1.5 text-default-400">&rarr;</span>
+                    <span className="font-semibold">{s.to}</span>
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className={`font-bold ${settled ? "text-success-600 line-through" : "text-warning-600"}`}>
+                      &#8369;{formatAmount(s.amount)}
+                    </span>
+                    {onMarkSettled && onUnmarkSettled && (
+                      settled ? (
+                        confirmUnsettle === settledId ? (
+                          <div className="flex items-center gap-1">
+                            <button
+                              onClick={() => {
+                                if (settledId) onUnmarkSettled(settledId);
+                                setConfirmUnsettle(null);
+                              }}
+                              className="text-xs text-danger-500 font-medium"
+                            >
+                              Undo?
+                            </button>
+                            <button
+                              onClick={() => setConfirmUnsettle(null)}
+                              className="text-xs text-default-400"
+                            >
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            onClick={() => setConfirmUnsettle(settledId || null)}
+                            className="text-success-500 text-lg"
+                            title="Mark as unsettled"
+                          >
+                            &#10003;
+                          </button>
+                        )
+                      ) : (
+                        <button
+                          onClick={() => onMarkSettled(s.from, s.to, s.amount)}
+                          className="text-default-300 hover:text-success-500 transition text-lg"
+                          title="Mark as settled"
+                        >
+                          &#9675;
+                        </button>
+                      )
+                    )}
+                  </div>
+                </div>
+              );
+            })}
           </div>
         )}
 
         <Divider />
 
         {/* Action buttons */}
-        <div className="grid grid-cols-2 gap-2">
+        <div className="grid grid-cols-3 gap-2">
           <Button
             color="primary"
             variant="solid"
@@ -209,6 +289,12 @@ export default function Settlement({ trip, tripId }: Props) {
           </Button>
           <Button variant="flat" onPress={handleDownloadReport} size="sm">
             Download
+          </Button>
+          <Button variant="flat" onPress={handleExportCsv} size="sm">
+            CSV
+          </Button>
+          <Button variant="flat" onPress={handleExportSettlementCsv} size="sm">
+            CSV Summary
           </Button>
         </div>
 
@@ -262,13 +348,14 @@ export default function Settlement({ trip, tripId }: Props) {
               {trip.expenses.map((e, i) => {
                 const payers = getPayers(e);
                 const payerNames = payers.map((p) => getName(p.id)).join(", ");
+                const emoji = getCategoryEmoji(e.category);
                 return (
                   <div
                     key={i}
                     className="flex justify-between text-default-600 py-0.5"
                   >
                     <span className="mr-2 break-words min-w-0">
-                      {e.description} ({payerNames})
+                      {emoji}{emoji ? " " : ""}{e.description} ({payerNames})
                     </span>
                     <span className="shrink-0">
                       &#8369;{formatAmount(e.amount)}
@@ -281,6 +368,43 @@ export default function Settlement({ trip, tripId }: Props) {
                 <span>&#8369;{formatAmount(total)}</span>
               </div>
             </div>
+
+            {/* Category subtotals */}
+            {trip.expenses.some((e) => e.category) && (
+              <div className="mb-4">
+                <h4 className="font-semibold text-default-700 mb-1 text-xs uppercase tracking-wide">
+                  By Category
+                </h4>
+                {CATEGORIES.filter((cat) =>
+                  trip.expenses.some((e) => e.category === cat.id)
+                ).map((cat) => {
+                  const catTotal = trip.expenses
+                    .filter((e) => e.category === cat.id)
+                    .reduce((sum, e) => sum + e.amount, 0);
+                  return (
+                    <div
+                      key={cat.id}
+                      className="flex justify-between text-default-600 py-0.5"
+                    >
+                      <span>{cat.emoji} {cat.label}</span>
+                      <span>&#8369;{formatAmount(catTotal)}</span>
+                    </div>
+                  );
+                })}
+                {trip.expenses.some((e) => !e.category) && (
+                  <div className="flex justify-between text-default-600 py-0.5">
+                    <span>Uncategorized</span>
+                    <span>
+                      &#8369;{formatAmount(
+                        trip.expenses
+                          .filter((e) => !e.category)
+                          .reduce((sum, e) => sum + e.amount, 0)
+                      )}
+                    </span>
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mb-4">
               <h4 className="font-semibold text-default-700 mb-1 text-xs uppercase tracking-wide">

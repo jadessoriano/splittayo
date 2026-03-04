@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { Button, Card, CardBody, Divider } from "@heroui/react";
 import { Expense, Person, getPayers } from "@/lib/types";
+import { getCategoryEmoji } from "@/data/categories";
 
 interface Props {
   expenses: Expense[];
@@ -70,7 +71,7 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
             >
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-default-800">
-                  {expense.description}
+                  {getCategoryEmoji(expense.category)}{getCategoryEmoji(expense.category) ? " " : ""}{expense.description}
                 </div>
                 <div className="text-sm text-default-500">
                   {formatPayers(expense)} &#8369;

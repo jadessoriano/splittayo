@@ -2,8 +2,10 @@
 
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Card, CardBody, Divider, Input } from "@heroui/react";
+import Link from "next/link";
+import { Button, Card, CardBody, Chip, Divider, Input } from "@heroui/react";
 import { createTrip } from "@/lib/database";
+import { TEMPLATES } from "@/data/templates";
 
 interface SavedTrip {
   id: string;
@@ -144,6 +146,22 @@ export default function Home() {
                   variant="bordered"
                   autoFocus
                 />
+                <div>
+                  <span className="text-xs text-default-500 mb-1.5 block">Quick start</span>
+                  <div className="flex flex-wrap gap-2">
+                    {TEMPLATES.map((t) => (
+                      <Chip
+                        key={t.id}
+                        color={tripName === t.suggestedName ? "primary" : "default"}
+                        variant={tripName === t.suggestedName ? "solid" : "bordered"}
+                        className="cursor-pointer"
+                        onClick={() => setTripName(t.suggestedName)}
+                      >
+                        {t.icon} {t.name}
+                      </Chip>
+                    ))}
+                  </div>
+                </div>
                 <Button
                   color="primary"
                   onPress={handleCreate}
@@ -168,9 +186,10 @@ export default function Home() {
               <Divider />
               <div className="space-y-1">
                 {myTrips.map((t) => (
-                  <a
+                  <Link
                     key={t.id}
                     href={`/trip/${t.id}`}
+                    prefetch={false}
                     className="flex items-center justify-between p-3 rounded-lg hover:bg-default-100 transition-colors"
                   >
                     <span className="font-medium text-default-800 truncate">
@@ -182,7 +201,7 @@ export default function Home() {
                         day: "numeric",
                       })}
                     </span>
-                  </a>
+                  </Link>
                 ))}
               </div>
             </CardBody>

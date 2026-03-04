@@ -3,6 +3,7 @@
 import { useState, useEffect, useMemo, useRef } from "react";
 import { Button, Card, CardBody, Chip, Input } from "@heroui/react";
 import { Person, Expense, Payer, getPayers } from "@/lib/types";
+import { CATEGORIES } from "@/data/categories";
 
 interface Props {
   people: Person[];
@@ -17,6 +18,7 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
   const [paidByIds, setPaidByIds] = useState<string[]>([]);
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [splitBetween, setSplitBetween] = useState<string[]>([]);
+  const [category, setCategory] = useState<string>("");
   const formRef = useRef<HTMLDivElement>(null);
 
   // Populate form when editing
@@ -36,6 +38,7 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
         setCustomAmounts({});
       }
       setSplitBetween(editingExpense.splitBetween);
+      setCategory(editingExpense.category || "");
       // Scroll to form
       requestAnimationFrame(() => {
         formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -102,6 +105,7 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
       amount: parsedAmount,
       paidBy: payers,
       splitBetween,
+      ...(category ? { category } : {}),
     });
 
     setDescription("");
@@ -109,6 +113,7 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
     setPaidByIds([]);
     setCustomAmounts({});
     setSplitBetween([]);
+    setCategory("");
   };
 
   const togglePayer = (id: string) => {
@@ -215,6 +220,24 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
             <span className="text-default-400 text-sm">&#8369;</span>
           }
         />
+
+        {/* Category */}
+        <div>
+          <span className="text-sm text-default-600 mb-2 block">Category</span>
+          <div className="flex flex-wrap gap-2">
+            {CATEGORIES.map((c) => (
+              <Chip
+                key={c.id}
+                color={category === c.id ? "warning" : "default"}
+                variant={category === c.id ? "solid" : "bordered"}
+                className="cursor-pointer"
+                onClick={() => setCategory((prev) => (prev === c.id ? "" : c.id))}
+              >
+                {c.emoji} {c.label}
+              </Chip>
+            ))}
+          </div>
+        </div>
 
         {/* Who paid — multi-select chips */}
         <div>
