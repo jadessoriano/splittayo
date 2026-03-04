@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { Card, CardBody, Chip, Input } from "@heroui/react";
+import { Card, CardBody, Chip, Input, Snippet } from "@heroui/react";
 import { Person } from "@/lib/types";
 
 interface Props {
@@ -77,11 +77,11 @@ export default function PeopleManager({
             </Chip>
           ))}
           {people.length < 2 && (
-            <p className="text-default-400 text-sm">
+            <Chip color="warning" variant="flat" size="sm">
               {people.length === 0
                 ? "Add at least 2 people to start"
                 : "Add 1 more person to start splitting"}
-            </p>
+            </Chip>
           )}
         </div>
       </CardBody>
