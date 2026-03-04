@@ -8,9 +8,10 @@ interface Props {
   expenses: Expense[];
   people: Person[];
   onRemove?: (id: string) => void;
+  onEdit?: (expense: Expense) => void;
 }
 
-export default function ExpenseList({ expenses, people, onRemove }: Props) {
+export default function ExpenseList({ expenses, people, onRemove, onEdit }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const getName = (id: string) =>
@@ -78,8 +79,8 @@ export default function ExpenseList({ expenses, people, onRemove }: Props) {
                   Split: {expense.splitBetween.map(getName).join(", ")}
                 </div>
               </div>
-              {onRemove && (
-                <div className="ml-2 shrink-0">
+              {(onRemove || onEdit) && (
+                <div className="ml-2 shrink-0 flex items-center gap-1">
                   {confirmId === expense.id ? (
                     <Button
                       size="sm"
@@ -90,12 +91,24 @@ export default function ExpenseList({ expenses, people, onRemove }: Props) {
                       Remove?
                     </Button>
                   ) : (
-                    <button
-                      onClick={() => handleRemove(expense.id)}
-                      className="text-default-400 hover:text-danger transition text-lg"
-                    >
-                      &times;
-                    </button>
+                    <>
+                      {onEdit && (
+                        <button
+                          onClick={() => onEdit(expense)}
+                          className="text-default-400 hover:text-primary transition text-sm"
+                        >
+                          &#9998;
+                        </button>
+                      )}
+                      {onRemove && (
+                        <button
+                          onClick={() => handleRemove(expense.id)}
+                          className="text-default-400 hover:text-danger transition text-lg"
+                        >
+                          &times;
+                        </button>
+                      )}
+                    </>
                   )}
                 </div>
               )}

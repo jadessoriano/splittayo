@@ -52,6 +52,7 @@ export default function TripApp({ tripId }: Props) {
   const [isCreator, setIsCreator] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
   const [creatingNewTrip, setCreatingNewTrip] = useState(false);
+  const [editingExpense, setEditingExpense] = useState<Expense | null>(null);
   const nameTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
   const pendingOps = useRef(0); // track in-flight saves to skip own echoes
   const router = useRouter();
@@ -223,6 +224,29 @@ export default function TripApp({ tripId }: Props) {
     if (!ok) {
       setTrip((prev) => ({ ...prev, expenses: prevExpenses }));
       showError("Failed to remove expense. Check your connection.");
+    }
+  };
+
+  const editExpense = async (expense: Omit<Expense, "id">) => {
+    if (!editingExpense) return;
+    const updated: Expense = { ...expense, id: editingExpense.id };
+    // Optimistic: replace in list
+    setTrip((prev) => ({
+      ...prev,
+      expenses: prev.expenses.map((e) => (e.id === updated.id ? updated : e)),
+    }));
+    setEditingExpense(null);
+    // Remove old, then add updated (no edit RPC exists)
+    pendingOps.current++;
+    const removeOk = await removeExpenseFromTrip(tripId, updated.id);
+    if (!removeOk) {
+      showError("Failed to update expense. Check your connection.");
+      return;
+    }
+    pendingOps.current++;
+    const addOk = await addExpenseToTrip(tripId, updated);
+    if (!addOk) {
+      showError("Failed to update expense. Check your connection.");
     }
   };
 
@@ -420,8 +444,9 @@ export default function TripApp({ tripId }: Props) {
         {trip.people.length >= 2 && (
           <ExpenseForm
             people={trip.people}
-            onAdd={addExpense}
-            defaultPaidBy={currentUserId || undefined}
+            onAdd={editingExpense ? editExpense : addExpense}
+            editingExpense={editingExpense}
+            onCancelEdit={() => setEditingExpense(null)}
           />
         )}
 
@@ -430,6 +455,7 @@ export default function TripApp({ tripId }: Props) {
             expenses={trip.expenses}
             people={trip.people}
             onRemove={removeExpense}
+            onEdit={setEditingExpense}
           />
         )}
 

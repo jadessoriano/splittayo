@@ -1,29 +1,49 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { Button, Card, CardBody, Chip, Input } from "@heroui/react";
-import { Person, Expense, Payer } from "@/lib/types";
+import { Person, Expense, Payer, getPayers } from "@/lib/types";
 
 interface Props {
   people: Person[];
   onAdd: (expense: Omit<Expense, "id">) => void;
-  defaultPaidBy?: string;
+  editingExpense?: Expense | null;
+  onCancelEdit?: () => void;
 }
 
-export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
+export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdit }: Props) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
   const [paidByIds, setPaidByIds] = useState<string[]>([]);
   const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [splitBetween, setSplitBetween] = useState<string[]>([]);
+  const formRef = useRef<HTMLDivElement>(null);
 
-  // Reset paidBy when identity changes
+  // Populate form when editing
   useEffect(() => {
-    setPaidByIds([]);
-    setCustomAmounts({});
-  }, [defaultPaidBy]);
+    if (editingExpense) {
+      setDescription(editingExpense.description);
+      setAmount(editingExpense.amount.toLocaleString("en-PH"));
+      const payers = getPayers(editingExpense);
+      setPaidByIds(payers.map((p) => p.id));
+      const evenAmount = editingExpense.amount / payers.length;
+      const isEven = payers.every((p) => Math.abs(p.amount - evenAmount) < 0.01);
+      if (!isEven) {
+        const ca: Record<string, string> = {};
+        payers.forEach((p) => { ca[p.id] = String(p.amount); });
+        setCustomAmounts(ca);
+      } else {
+        setCustomAmounts({});
+      }
+      setSplitBetween(editingExpense.splitBetween);
+      // Scroll to form
+      requestAnimationFrame(() => {
+        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    }
+  }, [editingExpense]);
 
-  const parsedAmount = parseFloat(amount) || 0;
+  const parsedAmount = parseFloat(amount.replace(/,/g, "")) || 0;
 
   // Calculate even split for payers
   const evenSplit = useMemo(() => {
@@ -34,17 +54,37 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
   // Check if any custom amounts are set
   const hasCustomAmounts = Object.values(customAmounts).some((v) => v !== "");
 
-  // Get the effective amount for a payer
+  // Get the effective amount for a payer (auto-fill remaining payers with split remainder)
   const getPayerAmount = (id: string): number => {
     if (!hasCustomAmounts) return evenSplit;
+
     const custom = parseFloat(customAmounts[id] || "");
-    return isNaN(custom) ? evenSplit : custom;
+    if (!isNaN(custom)) return custom;
+
+    // Sum all payers that have custom amounts
+    const customTotal = paidByIds.reduce((sum, pid) => {
+      const c = parseFloat(customAmounts[pid] || "");
+      return isNaN(c) ? sum : sum + c;
+    }, 0);
+
+    // Split remainder evenly among payers without custom amounts
+    const payersWithoutCustom = paidByIds.filter((pid) => {
+      const c = parseFloat(customAmounts[pid] || "");
+      return isNaN(c);
+    });
+
+    if (payersWithoutCustom.length > 0) {
+      const remainder = Math.round((parsedAmount - customTotal) * 100) / 100;
+      return Math.max(0, Math.round((remainder / payersWithoutCustom.length) * 100) / 100);
+    }
+
+    return evenSplit;
   };
 
   // Sum of all payer amounts
   const payerTotal = useMemo(() => {
     return paidByIds.reduce((sum, id) => sum + getPayerAmount(id), 0);
-  }, [paidByIds, customAmounts, evenSplit, hasCustomAmounts]);
+  }, [paidByIds, customAmounts, evenSplit, hasCustomAmounts, parsedAmount]);
 
   const amountMismatch = paidByIds.length > 1 && hasCustomAmounts && Math.abs(payerTotal - parsedAmount) > 0.01;
 
@@ -129,9 +169,11 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
     !amountMismatch;
 
   return (
-    <Card shadow="sm">
+    <Card ref={formRef} shadow="sm">
       <CardBody className="gap-3">
-        <h2 className="font-semibold text-default-800">Add Expense</h2>
+        <h2 className="font-semibold text-default-800">
+          {editingExpense ? "Edit Expense" : "Add Expense"}
+        </h2>
 
         <Input
           placeholder="What was it for? (e.g., Boat ride)"
@@ -142,10 +184,24 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
         />
 
         <Input
-          type="number"
+          inputMode="decimal"
           placeholder="Amount"
           value={amount}
-          onChange={(e) => setAmount(e.target.value)}
+          onChange={(e) => {
+            // Allow only digits, commas, and one decimal point
+            const raw = e.target.value.replace(/[^0-9.,]/g, "");
+            // Strip commas to get the number, then reformat
+            const stripped = raw.replace(/,/g, "");
+            // Allow trailing dot or trailing decimal digits while typing
+            if (stripped === "" || stripped === ".") {
+              setAmount(raw);
+              return;
+            }
+            const parts = stripped.split(".");
+            const intPart = parts[0].replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+            const formatted = parts.length > 1 ? `${intPart}.${parts[1]}` : intPart;
+            setAmount(formatted);
+          }}
           size="sm"
           variant="bordered"
           startContent={
@@ -194,9 +250,22 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
                 <span className="text-xs text-default-400">
                   Even split: &#8369;{formatAmount(evenSplit)} each
                 </span>
+                {hasCustomAmounts && (
+                  <Button
+                    size="sm"
+                    variant="light"
+                    color="primary"
+                    onPress={() => setCustomAmounts({})}
+                    className="text-xs h-6 min-w-0 px-2"
+                  >
+                    Split evenly
+                  </Button>
+                )}
               </div>
               {paidByIds.map((id) => {
                 const name = people.find((p) => p.id === id)?.name || "Unknown";
+                const effectiveAmount = getPayerAmount(id);
+                const hasCustom = customAmounts[id] !== undefined && customAmounts[id] !== "";
                 return (
                   <div key={id} className="flex items-center gap-2">
                     <span className="text-sm text-default-600 w-20 truncate">{name}</span>
@@ -204,8 +273,8 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
                       type="number"
                       size="sm"
                       variant="bordered"
-                      placeholder={formatAmount(evenSplit)}
-                      value={customAmounts[id] || ""}
+                      placeholder={formatAmount(effectiveAmount)}
+                      value={hasCustom ? customAmounts[id] : ""}
                       onChange={(e) =>
                         setCustomAmounts((prev) => ({ ...prev, [id]: e.target.value }))
                       }
@@ -247,14 +316,25 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
           </div>
         </div>
 
-        <Button
-          onPress={handleSubmit}
-          isDisabled={!isValid}
-          fullWidth
-          className="bg-rose-500 text-white font-medium shadow-md disabled:opacity-50 disabled:shadow-none"
-        >
-          Add Expense
-        </Button>
+        <div className={editingExpense ? "flex gap-2" : ""}>
+          <Button
+            onPress={handleSubmit}
+            isDisabled={!isValid}
+            fullWidth
+            className="bg-rose-500 text-white font-medium shadow-md disabled:opacity-50 disabled:shadow-none"
+          >
+            {editingExpense ? "Save Changes" : "Add Expense"}
+          </Button>
+          {editingExpense && onCancelEdit && (
+            <Button
+              onPress={onCancelEdit}
+              variant="flat"
+              className="shrink-0"
+            >
+              Cancel
+            </Button>
+          )}
+        </div>
       </CardBody>
     </Card>
   );
