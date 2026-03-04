@@ -8,10 +8,14 @@ export function calculateBalances(
   people.forEach((p) => (balances[p.id] = 0));
 
   for (const expense of expenses) {
+    if (expense.splitBetween.length === 0) continue;
     const perPerson = expense.amount / expense.splitBetween.length;
+    if (balances[expense.paidBy] === undefined) continue;
     balances[expense.paidBy] += expense.amount;
     for (const personId of expense.splitBetween) {
-      balances[personId] -= perPerson;
+      if (balances[personId] !== undefined) {
+        balances[personId] -= perPerson;
+      }
     }
   }
 

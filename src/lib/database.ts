@@ -61,25 +61,115 @@ export async function getTrip(id: string): Promise<Trip | null> {
   };
 }
 
-export async function updateTrip(
-  id: string,
-  updates: Partial<Trip>
+// --- Atomic RPC operations (race-condition safe) ---
+
+export async function addPersonToTrip(
+  tripId: string,
+  person: Person
 ): Promise<boolean> {
   if (!isSupabaseConfigured) return false;
 
-  const { error } = await supabase
-    .from("trips")
-    .update({
-      ...updates,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", id);
+  const { error } = await supabase.rpc("add_trip_person", {
+    p_trip_id: tripId,
+    p_person: person,
+  });
 
   if (error) {
-    console.error("Error updating trip:", error);
+    console.error("Error adding person:", error);
     return false;
   }
   return true;
+}
+
+export async function removePersonFromTrip(
+  tripId: string,
+  personId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("remove_trip_person", {
+    p_trip_id: tripId,
+    p_person_id: personId,
+  });
+
+  if (error) {
+    console.error("Error removing person:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function addExpenseToTrip(
+  tripId: string,
+  expense: Expense
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("add_trip_expense", {
+    p_trip_id: tripId,
+    p_expense: expense,
+  });
+
+  if (error) {
+    console.error("Error adding expense:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function removeExpenseFromTrip(
+  tripId: string,
+  expenseId: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("remove_trip_expense", {
+    p_trip_id: tripId,
+    p_expense_id: expenseId,
+  });
+
+  if (error) {
+    console.error("Error removing expense:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function updateTripName(
+  tripId: string,
+  name: string
+): Promise<boolean> {
+  if (!isSupabaseConfigured) return false;
+
+  const { error } = await supabase.rpc("update_trip_name", {
+    p_trip_id: tripId,
+    p_name: name,
+  });
+
+  if (error) {
+    console.error("Error updating trip name:", error);
+    return false;
+  }
+  return true;
+}
+
+export async function createTripWithPeople(
+  name: string,
+  people: { id: string; name: string }[]
+): Promise<string | null> {
+  if (!isSupabaseConfigured) return null;
+
+  const { data, error } = await supabase
+    .from("trips")
+    .insert({ name, people, expenses: [] })
+    .select("id")
+    .single();
+
+  if (error) {
+    console.error("Error creating trip with people:", error);
+    return null;
+  }
+  return data.id;
 }
 
 export function subscribeToTrip(
@@ -107,7 +197,25 @@ export function subscribeToTrip(
         });
       }
     )
-    .subscribe();
+    .subscribe((status) => {
+      // Re-fetch on reconnect to catch any updates we missed
+      if (status === "SUBSCRIBED") {
+        supabase
+          .from("trips")
+          .select("*")
+          .eq("id", id)
+          .single<TripRow>()
+          .then(({ data }) => {
+            if (data) {
+              onUpdate({
+                name: data.name,
+                people: data.people || [],
+                expenses: data.expenses || [],
+              });
+            }
+          });
+      }
+    });
 
   return () => {
     supabase.removeChannel(channel);

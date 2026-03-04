@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { Button, Card, CardBody, Chip, Input, Select, SelectItem } from "@heroui/react";
 import { Person, Expense } from "@/lib/types";
 
@@ -15,6 +15,11 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
   const [amount, setAmount] = useState("");
   const [paidBy, setPaidBy] = useState(defaultPaidBy || "");
   const [splitBetween, setSplitBetween] = useState<string[]>([]);
+
+  // Reset paidBy when identity changes
+  useEffect(() => {
+    setPaidBy(defaultPaidBy || "");
+  }, [defaultPaidBy]);
 
   const handleSubmit = () => {
     const parsedAmount = parseFloat(amount);

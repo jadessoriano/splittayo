@@ -17,7 +17,10 @@ export default function JoinPrompt({
   onJoin,
   onJoinNew,
 }: Props) {
-  const [name, setName] = useState("");
+  const [name, setName] = useState(() => {
+    if (typeof window === "undefined") return "";
+    return localStorage.getItem("splittayo-username") || "";
+  });
 
   const handleJoin = () => {
     const trimmed = name.trim();

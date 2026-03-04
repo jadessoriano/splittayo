@@ -47,11 +47,15 @@ export default function Settlement({ trip, tripId }: Props) {
 
   const handleNativeShare = async () => {
     if (navigator.share) {
-      await navigator.share({
-        title: `${trip.name || "Trip"} — SplitTayo`,
-        text: `Check out our expense breakdown for ${trip.name || "our trip"}`,
-        url: shareUrl,
-      });
+      try {
+        await navigator.share({
+          title: `${trip.name || "Trip"} — SplitTayo`,
+          text: `Check out our expense breakdown for ${trip.name || "our trip"}`,
+          url: shareUrl,
+        });
+      } catch {
+        // User cancelled the share dialog
+      }
     } else {
       handleCopyLink();
     }
@@ -83,11 +87,16 @@ export default function Settlement({ trip, tripId }: Props) {
     }
   };
 
-  // Capture after report becomes visible
+  // Capture after report becomes visible and painted
   useEffect(() => {
     if (downloading && showReport && reportRef.current) {
-      captureReport();
-      setDownloading(false);
+      // Wait for browser to paint the report before capturing
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          captureReport();
+          setDownloading(false);
+        });
+      });
     }
   }, [downloading, showReport]);
 

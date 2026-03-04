@@ -1,9 +1,19 @@
 "use client";
 
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef } from "react";
+import { useRouter } from "next/navigation";
 import { Button, Chip, Input, Spinner } from "@heroui/react";
 import { Trip, Person, Expense } from "@/lib/types";
-import { getTrip, updateTrip, subscribeToTrip } from "@/lib/database";
+import {
+  getTrip,
+  subscribeToTrip,
+  addPersonToTrip,
+  removePersonFromTrip,
+  addExpenseToTrip,
+  removeExpenseFromTrip,
+  updateTripName,
+  createTripWithPeople,
+} from "@/lib/database";
 import PeopleManager from "./PeopleManager";
 import ExpenseForm from "./ExpenseForm";
 import ExpenseList from "./ExpenseList";
@@ -12,6 +22,22 @@ import JoinPrompt from "./JoinPrompt";
 
 interface Props {
   tripId: string;
+}
+
+function saveToMyTrips(tripId: string, tripName: string) {
+  try {
+    const raw = localStorage.getItem("splittayo-my-trips") || "[]";
+    const trips = JSON.parse(raw) as { id: string; name: string; joinedAt: number }[];
+    const existing = trips.find((t) => t.id === tripId);
+    if (existing) {
+      existing.name = tripName || existing.name;
+    } else {
+      trips.unshift({ id: tripId, name: tripName, joinedAt: Date.now() });
+    }
+    localStorage.setItem("splittayo-my-trips", JSON.stringify(trips));
+  } catch {
+    // ignore
+  }
 }
 
 export default function TripApp({ tripId }: Props) {
@@ -24,8 +50,16 @@ export default function TripApp({ tripId }: Props) {
   const [notFound, setNotFound] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string | null>(null);
   const [isCreator, setIsCreator] = useState(false);
-  const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const lastSavedAt = useRef<number>(0);
+  const [toast, setToast] = useState<string | null>(null);
+  const [creatingNewTrip, setCreatingNewTrip] = useState(false);
+  const nameTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const pendingOps = useRef(0); // track in-flight saves to skip own echoes
+  const router = useRouter();
+
+  const showError = (msg: string) => {
+    setToast(msg);
+    setTimeout(() => setToast(null), 3000);
+  };
 
   // Load trip and check if user has already joined
   useEffect(() => {
@@ -33,6 +67,7 @@ export default function TripApp({ tripId }: Props) {
       const data = await getTrip(tripId);
       if (data) {
         setTrip(data);
+        saveToMyTrips(tripId, data.name);
 
         const savedUserId = localStorage.getItem(`splittayo-user-${tripId}`);
         const savedCreator = localStorage.getItem(`splittayo-creator-${tripId}`);
@@ -59,45 +94,68 @@ export default function TripApp({ tripId }: Props) {
     }
   }, [loading, notFound, trip.people.length, isCreator, tripId]);
 
+  // Cleanup nameTimeout on unmount
+  useEffect(() => {
+    return () => {
+      if (nameTimeout.current) clearTimeout(nameTimeout.current);
+    };
+  }, []);
+
   // Subscribe to real-time changes
   useEffect(() => {
     const unsubscribe = subscribeToTrip(tripId, (updatedTrip) => {
-      if (Date.now() - lastSavedAt.current < 500) return;
+      if (pendingOps.current > 0) {
+        // Skip our own echo, but decrement so we accept the next external update
+        pendingOps.current--;
+        return;
+      }
+      // Deduplicate people by name (handles concurrent adds of same name)
+      const seen = new Set<string>();
+      updatedTrip.people = updatedTrip.people.filter((p) => {
+        const key = p.name.toLowerCase();
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
       setTrip(updatedTrip);
     });
 
     return unsubscribe;
   }, [tripId]);
 
-  const saveTrip = useCallback(
-    (newTrip: Trip) => {
-      if (saveTimeout.current) clearTimeout(saveTimeout.current);
-      saveTimeout.current = setTimeout(async () => {
-        lastSavedAt.current = Date.now();
-        await updateTrip(tripId, newTrip);
-      }, 300);
-    },
-    [tripId]
-  );
-
-  const modifyTrip = (updater: (prev: Trip) => Trip) => {
-    setTrip((prev) => {
-      const next = updater(prev);
-      saveTrip(next);
-      return next;
-    });
+  // Debounced trip name update
+  const handleNameChange = (newName: string) => {
+    setTrip((prev) => ({ ...prev, name: newName }));
+    if (nameTimeout.current) clearTimeout(nameTimeout.current);
+    nameTimeout.current = setTimeout(async () => {
+      pendingOps.current++;
+      saveToMyTrips(tripId, newName);
+      const ok = await updateTripName(tripId, newName);
+      if (!ok) showError("Failed to save trip name. Check your connection.");
+    }, 500);
   };
 
-  const addPerson = (name: string) => {
+  const addPerson = async (name: string) => {
     const person: Person = { id: crypto.randomUUID(), name };
-    modifyTrip((prev) => ({
-      ...prev,
-      people: [...prev.people, person],
-    }));
+    // Optimistic update
+    setTrip((prev) => ({ ...prev, people: [...prev.people, person] }));
+    pendingOps.current++;
+    const ok = await addPersonToTrip(tripId, person);
+    if (!ok) {
+      // Rollback
+      setTrip((prev) => ({
+        ...prev,
+        people: prev.people.filter((p) => p.id !== person.id),
+      }));
+      showError("Failed to add person. Check your connection.");
+    }
   };
 
-  const removePerson = (id: string) => {
-    modifyTrip((prev) => ({
+  const removePerson = async (id: string) => {
+    // Save for rollback
+    const prevTrip = { ...trip };
+    // Optimistic update
+    setTrip((prev) => ({
       ...prev,
       people: prev.people.filter((p) => p.id !== id),
       expenses: prev.expenses
@@ -108,38 +166,94 @@ export default function TripApp({ tripId }: Props) {
         }))
         .filter((e) => e.splitBetween.length > 0),
     }));
+    pendingOps.current++;
+    const ok = await removePersonFromTrip(tripId, id);
+    if (!ok) {
+      setTrip(prevTrip);
+      showError("Failed to remove person. Check your connection.");
+    }
   };
 
-  const addExpense = (expense: Omit<Expense, "id">) => {
-    modifyTrip((prev) => ({
-      ...prev,
-      expenses: [
-        ...prev.expenses,
-        { ...expense, id: crypto.randomUUID() },
-      ],
-    }));
+  const addExpense = async (expense: Omit<Expense, "id">) => {
+    const full: Expense = { ...expense, id: crypto.randomUUID() };
+    setTrip((prev) => ({ ...prev, expenses: [...prev.expenses, full] }));
+    pendingOps.current++;
+    const ok = await addExpenseToTrip(tripId, full);
+    if (!ok) {
+      setTrip((prev) => ({
+        ...prev,
+        expenses: prev.expenses.filter((e) => e.id !== full.id),
+      }));
+      showError("Failed to add expense. Check your connection.");
+    }
   };
 
-  const removeExpense = (id: string) => {
-    modifyTrip((prev) => ({
+  const removeExpense = async (id: string) => {
+    const prevExpenses = trip.expenses;
+    setTrip((prev) => ({
       ...prev,
       expenses: prev.expenses.filter((e) => e.id !== id),
     }));
+    pendingOps.current++;
+    const ok = await removeExpenseFromTrip(tripId, id);
+    if (!ok) {
+      setTrip((prev) => ({ ...prev, expenses: prevExpenses }));
+      showError("Failed to remove expense. Check your connection.");
+    }
   };
 
   const handleJoin = (personId: string) => {
     setCurrentUserId(personId);
     localStorage.setItem(`splittayo-user-${tripId}`, personId);
+    saveToMyTrips(tripId, trip.name);
+    // Also save global username
+    const person = trip.people.find((p) => p.id === personId);
+    if (person) localStorage.setItem("splittayo-username", person.name);
   };
 
-  const handleJoinNew = (name: string) => {
+  const handleJoinNew = async (name: string) => {
     const person: Person = { id: crypto.randomUUID(), name };
-    modifyTrip((prev) => ({
-      ...prev,
-      people: [...prev.people, person],
-    }));
+    setTrip((prev) => ({ ...prev, people: [...prev.people, person] }));
     setCurrentUserId(person.id);
     localStorage.setItem(`splittayo-user-${tripId}`, person.id);
+    saveToMyTrips(tripId, trip.name);
+    localStorage.setItem("splittayo-username", name);
+    pendingOps.current++;
+    const ok = await addPersonToTrip(tripId, person);
+    if (!ok) {
+      // Rollback: undo join so user can retry
+      setTrip((prev) => ({
+        ...prev,
+        people: prev.people.filter((p) => p.id !== person.id),
+      }));
+      setCurrentUserId(null);
+      localStorage.removeItem(`splittayo-user-${tripId}`);
+      showError("Failed to join trip. Check your connection.");
+    }
+  };
+
+  const handleNewTripSamePeople = async () => {
+    setCreatingNewTrip(true);
+    // Give everyone new IDs so they're independent from the old trip
+    const newPeople = trip.people.map((p) => ({
+      id: crypto.randomUUID(),
+      name: p.name,
+    }));
+    const newId = await createTripWithPeople("", newPeople);
+    if (newId) {
+      // Find the current user's new ID
+      const currentName = trip.people.find((p) => p.id === currentUserId)?.name;
+      const newMe = newPeople.find((p) => p.name === currentName);
+      if (newMe) {
+        localStorage.setItem(`splittayo-user-${newId}`, newMe.id);
+      }
+      localStorage.setItem(`splittayo-creator-${newId}`, "true");
+      saveToMyTrips(newId, "");
+      router.push(`/trip/${newId}`);
+    } else {
+      showError("Failed to create new trip. Check your connection.");
+      setCreatingNewTrip(false);
+    }
   };
 
   const handleSwitchIdentity = () => {
@@ -187,6 +301,13 @@ export default function TripApp({ tripId }: Props) {
 
   return (
     <div className="min-h-screen bg-default-50">
+      {/* Error toast */}
+      {toast && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-danger-500 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium animate-appearance-in max-w-[90vw] text-center">
+          {toast}
+        </div>
+      )}
+
       {/* Header */}
       <header className="bg-gradient-to-br from-primary-600 via-primary-500 to-secondary-600 text-white py-8 px-4 text-center">
         <h1 className="text-3xl font-bold tracking-tight drop-shadow-sm">
@@ -222,9 +343,7 @@ export default function TripApp({ tripId }: Props) {
         <Input
           placeholder="Trip name (e.g., Boracay 2026)"
           value={trip.name}
-          onChange={(e) =>
-            modifyTrip((prev) => ({ ...prev, name: e.target.value }))
-          }
+          onChange={(e) => handleNameChange(e.target.value)}
           size="lg"
           variant="bordered"
           classNames={{
@@ -260,8 +379,33 @@ export default function TripApp({ tripId }: Props) {
         )}
       </main>
 
-      <footer className="text-center py-6 text-xs text-default-400">
-        SplitTayo &mdash; Split expenses the easy way
+      <footer className="max-w-lg mx-auto px-4 pb-8 pt-2 space-y-3">
+        <div className="flex gap-2">
+          <Button
+            variant="bordered"
+            size="sm"
+            fullWidth
+            onPress={handleNewTripSamePeople}
+            isLoading={creatingNewTrip}
+            isDisabled={trip.people.length === 0}
+            className="text-default-600"
+          >
+            New trip, same people
+          </Button>
+          <Button
+            as="a"
+            href="/"
+            variant="light"
+            size="sm"
+            fullWidth
+            className="text-default-500"
+          >
+            My Trips
+          </Button>
+        </div>
+        <p className="text-center text-xs text-default-400">
+          SplitTayo &mdash; Split expenses the easy way
+        </p>
       </footer>
     </div>
   );
