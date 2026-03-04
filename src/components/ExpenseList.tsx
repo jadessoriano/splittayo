@@ -9,9 +9,10 @@ interface Props {
   people: Person[];
   onRemove?: (id: string) => void;
   onEdit?: (expense: Expense) => void;
+  editingId?: string | null;
 }
 
-export default function ExpenseList({ expenses, people, onRemove, onEdit }: Props) {
+export default function ExpenseList({ expenses, people, onRemove, onEdit, editingId }: Props) {
   const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const getName = (id: string) =>
@@ -65,7 +66,7 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit }: Prop
           {expenses.map((expense) => (
             <div
               key={expense.id}
-              className="flex items-start justify-between p-3 bg-default-50 rounded-lg"
+              className={`flex items-start justify-between p-3 rounded-lg ${editingId === expense.id ? "bg-primary-50 ring-1 ring-primary-300" : "bg-default-50"}`}
             >
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-default-800">

@@ -456,6 +456,7 @@ export default function TripApp({ tripId }: Props) {
             people={trip.people}
             onRemove={removeExpense}
             onEdit={setEditingExpense}
+            editingId={editingExpense?.id}
           />
         )}
 

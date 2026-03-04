@@ -168,9 +168,16 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
     splitBetween.length > 0 &&
     !amountMismatch;
 
+  const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.key === "Enter" && isValid) {
+      e.preventDefault();
+      handleSubmit();
+    }
+  };
+
   return (
     <Card ref={formRef} shadow="sm">
-      <CardBody className="gap-3">
+      <CardBody className="gap-3" onKeyDown={handleKeyDown}>
         <h2 className="font-semibold text-default-800">
           {editingExpense ? "Edit Expense" : "Add Expense"}
         </h2>
