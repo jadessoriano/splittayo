@@ -39,9 +39,12 @@ export default function ExpenseForm({ people, onAdd, editingExpense, onCancelEdi
       }
       setSplitBetween(editingExpense.splitBetween);
       setCategory(editingExpense.category || "");
-      // Scroll to form
+      // Scroll to form with offset for sticky header
       requestAnimationFrame(() => {
-        formRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+        if (formRef.current) {
+          const y = formRef.current.getBoundingClientRect().top + window.scrollY - 60;
+          window.scrollTo({ top: y, behavior: "smooth" });
+        }
       });
     }
   }, [editingExpense]);

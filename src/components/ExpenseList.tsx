@@ -55,7 +55,10 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
     <Card shadow="sm">
       <CardBody className="gap-2">
         <div className="flex items-center justify-between">
-          <h2 className="font-semibold text-default-800">Expenses</h2>
+          <div>
+            <h2 className="font-semibold text-default-800">Expenses</h2>
+            {onEdit && <p className="text-xs text-default-400">Tap to edit</p>}
+          </div>
           <span className="text-sm text-default-500">
             Total: &#8369;{formatAmount(total)}
           </span>
@@ -67,7 +70,8 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
           {expenses.map((expense) => (
             <div
               key={expense.id}
-              className={`flex items-start justify-between p-3 rounded-lg ${editingId === expense.id ? "bg-primary-50 ring-1 ring-primary-300" : "bg-default-50"}`}
+              className={`flex items-start justify-between p-3 rounded-lg transition-all ${onEdit ? "cursor-pointer active:scale-[0.98] hover:bg-default-100 hover:shadow-sm" : ""} ${editingId === expense.id ? "bg-primary-50 ring-1 ring-primary-300" : "bg-default-50"}`}
+              onClick={() => onEdit?.(expense)}
             >
               <div className="flex-1 min-w-0">
                 <div className="font-medium text-default-800">
@@ -81,7 +85,7 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
                   Split: {expense.splitBetween.map(getName).join(", ")}
                 </div>
               </div>
-              {(onRemove || onEdit) && (
+              {onRemove && (
                 <div className="ml-2 shrink-0 flex items-center gap-1">
                   {confirmId === expense.id ? (
                     <Button
@@ -93,26 +97,15 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
                       Remove?
                     </Button>
                   ) : (
-                    <>
-                      {onEdit && (
-                        <button
-                          onClick={() => {
-                            onEdit(expense);
-                          }}
-                          className="text-default-400 hover:text-primary transition text-sm"
-                        >
-                          &#9998;
-                        </button>
-                      )}
-                      {onRemove && (
-                        <button
-                          onClick={() => handleRemove(expense.id)}
-                          className="text-default-400 hover:text-danger transition text-lg"
-                        >
-                          &times;
-                        </button>
-                      )}
-                    </>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemove(expense.id);
+                      }}
+                      className="text-default-400 hover:text-danger transition text-lg"
+                    >
+                      &times;
+                    </button>
                   )}
                 </div>
               )}
