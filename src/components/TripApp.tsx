@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
-import { Chip, Input, Spinner } from "@heroui/react";
+import { Button, Chip, Input, Spinner } from "@heroui/react";
 import { Trip, Person, Expense } from "@/lib/types";
 import { getTrip, updateTrip, subscribeToTrip } from "@/lib/database";
 import PeopleManager from "./PeopleManager";
@@ -34,7 +34,6 @@ export default function TripApp({ tripId }: Props) {
       if (data) {
         setTrip(data);
 
-        // Check localStorage for saved identity
         const savedUserId = localStorage.getItem(`splittayo-user-${tripId}`);
         const savedCreator = localStorage.getItem(`splittayo-creator-${tripId}`);
 
@@ -143,6 +142,13 @@ export default function TripApp({ tripId }: Props) {
     localStorage.setItem(`splittayo-user-${tripId}`, person.id);
   };
 
+  const handleSwitchIdentity = () => {
+    setCurrentUserId(null);
+    setIsCreator(false);
+    localStorage.removeItem(`splittayo-user-${tripId}`);
+    localStorage.removeItem(`splittayo-creator-${tripId}`);
+  };
+
   const currentUser = trip.people.find((p) => p.id === currentUserId);
 
   if (loading) {
@@ -190,14 +196,24 @@ export default function TripApp({ tripId }: Props) {
           Split expenses with friends. No app. No sign-up.
         </p>
         {currentUser && (
-          <Chip
-            color="default"
-            variant="solid"
-            size="sm"
-            className="mt-2 bg-white/20 text-white"
-          >
-            Joined as {currentUser.name}
-          </Chip>
+          <div className="mt-2 flex items-center justify-center gap-2">
+            <Chip
+              color="default"
+              variant="solid"
+              size="sm"
+              className="bg-white/20 text-white"
+            >
+              {currentUser.name}
+            </Chip>
+            <Button
+              size="sm"
+              variant="light"
+              onPress={handleSwitchIdentity}
+              className="text-white/70 hover:text-white min-w-0 px-2 h-6"
+            >
+              Switch
+            </Button>
+          </div>
         )}
       </header>
 
@@ -211,17 +227,16 @@ export default function TripApp({ tripId }: Props) {
           }
           size="lg"
           variant="bordered"
-          readOnly={!isCreator}
           classNames={{
             inputWrapper: "bg-white",
           }}
         />
 
+        {/* Everyone can add people */}
         <PeopleManager
           people={trip.people}
           onAdd={addPerson}
           onRemove={removePerson}
-          readOnly={!isCreator}
         />
 
         {trip.people.length >= 2 && (

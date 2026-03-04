@@ -18,6 +18,7 @@ export default function PeopleManager({
   readOnly,
 }: Props) {
   const [name, setName] = useState("");
+  const [confirmId, setConfirmId] = useState<string | null>(null);
 
   const handleAdd = () => {
     const trimmed = name.trim();
@@ -26,6 +27,16 @@ export default function PeopleManager({
       return;
     onAdd(trimmed);
     setName("");
+  };
+
+  const handleClose = (id: string) => {
+    if (confirmId === id) {
+      onRemove(id);
+      setConfirmId(null);
+    } else {
+      setConfirmId(id);
+      setTimeout(() => setConfirmId((prev) => (prev === id ? null : prev)), 3000);
+    }
   };
 
   return (
@@ -58,11 +69,11 @@ export default function PeopleManager({
           {people.map((person) => (
             <Chip
               key={person.id}
-              color="secondary"
+              color={confirmId === person.id ? "danger" : "secondary"}
               variant="flat"
-              onClose={readOnly ? undefined : () => onRemove(person.id)}
+              onClose={readOnly ? undefined : () => handleClose(person.id)}
             >
-              {person.name}
+              {confirmId === person.id ? `Remove ${person.name}?` : person.name}
             </Chip>
           ))}
           {people.length === 0 && (

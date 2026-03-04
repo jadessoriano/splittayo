@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { Button, Card, CardBody, Divider } from "@heroui/react";
 import { Trip } from "@/lib/types";
 import { minimizeTransactions, calculateBalances } from "@/lib/settle";
@@ -71,14 +71,27 @@ export default function Settlement({ trip, tripId }: Props) {
     setShowQR(true);
   }, [showQR, shareUrl]);
 
-  const handleDownloadReport = async () => {
-    if (!reportRef.current) return;
+  const [downloading, setDownloading] = useState(false);
 
-    const wasHidden = !showReport;
-    if (wasHidden) setShowReport(true);
+  const handleDownloadReport = () => {
+    // Show report first if hidden, then capture on next render
+    if (!showReport) {
+      setShowReport(true);
+      setDownloading(true);
+    } else {
+      captureReport();
+    }
+  };
 
-    await new Promise((r) => setTimeout(r, 100));
+  // Capture after report becomes visible
+  useEffect(() => {
+    if (downloading && showReport && reportRef.current) {
+      captureReport();
+      setDownloading(false);
+    }
+  }, [downloading, showReport]);
 
+  const captureReport = async () => {
     if (!reportRef.current) return;
 
     const canvas = await html2canvas(reportRef.current, {
@@ -90,8 +103,6 @@ export default function Settlement({ trip, tripId }: Props) {
     link.download = `${trip.name || "trip"}-breakdown.png`;
     link.href = canvas.toDataURL("image/png");
     link.click();
-
-    if (wasHidden) setShowReport(false);
   };
 
   const getName = (id: string) =>

@@ -1,6 +1,7 @@
 "use client";
 
-import { Card, CardBody, Divider } from "@heroui/react";
+import { useState } from "react";
+import { Button, Card, CardBody, Divider } from "@heroui/react";
 import { Expense, Person } from "@/lib/types";
 
 interface Props {
@@ -10,6 +11,8 @@ interface Props {
 }
 
 export default function ExpenseList({ expenses, people, onRemove }: Props) {
+  const [confirmId, setConfirmId] = useState<string | null>(null);
+
   const getName = (id: string) =>
     people.find((p) => p.id === id)?.name || "Unknown";
 
@@ -17,6 +20,17 @@ export default function ExpenseList({ expenses, people, onRemove }: Props) {
 
   const formatAmount = (n: number) =>
     n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
+
+  const handleRemove = (id: string) => {
+    if (confirmId === id) {
+      onRemove?.(id);
+      setConfirmId(null);
+    } else {
+      setConfirmId(id);
+      // Auto-dismiss after 3s
+      setTimeout(() => setConfirmId((prev) => (prev === id ? null : prev)), 3000);
+    }
+  };
 
   return (
     <Card shadow="sm">
@@ -49,12 +63,25 @@ export default function ExpenseList({ expenses, people, onRemove }: Props) {
                 </div>
               </div>
               {onRemove && (
-                <button
-                  onClick={() => onRemove(expense.id)}
-                  className="text-default-400 hover:text-danger transition ml-2 text-lg"
-                >
-                  &times;
-                </button>
+                <div className="ml-2 shrink-0">
+                  {confirmId === expense.id ? (
+                    <Button
+                      size="sm"
+                      color="danger"
+                      variant="flat"
+                      onPress={() => handleRemove(expense.id)}
+                    >
+                      Remove?
+                    </Button>
+                  ) : (
+                    <button
+                      onClick={() => handleRemove(expense.id)}
+                      className="text-default-400 hover:text-danger transition text-lg"
+                    >
+                      &times;
+                    </button>
+                  )}
+                </div>
               )}
             </div>
           ))}
