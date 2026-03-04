@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button, Card, CardBody, Chip, Input, Spinner } from "@heroui/react";
-import { Trip, Person, Expense } from "@/lib/types";
+import { Trip, Person, Expense, getPayers } from "@/lib/types";
 import {
   getTrip,
   subscribeToTrip,
@@ -169,18 +169,27 @@ export default function TripApp({ tripId }: Props) {
   const removePerson = async (id: string) => {
     // Save for rollback
     const prevTrip = { ...trip };
-    // Optimistic update
-    setTrip((prev) => ({
-      ...prev,
-      people: prev.people.filter((p) => p.id !== id),
-      expenses: prev.expenses
-        .filter((e) => e.paidBy !== id)
-        .map((e) => ({
+    // Optimistic update — handle both legacy string and Payer[] paidBy
+    setTrip((prev) => {
+      const cleaned: Expense[] = [];
+      for (const e of prev.expenses) {
+        const payers = getPayers(e);
+        const filteredPayers = payers.filter((p) => p.id !== id);
+        if (filteredPayers.length === 0) continue;
+        const filteredSplit = e.splitBetween.filter((p) => p !== id);
+        if (filteredSplit.length === 0) continue;
+        cleaned.push({
           ...e,
-          splitBetween: e.splitBetween.filter((p) => p !== id),
-        }))
-        .filter((e) => e.splitBetween.length > 0),
-    }));
+          paidBy: filteredPayers as Expense["paidBy"],
+          splitBetween: filteredSplit,
+        });
+      }
+      return {
+        ...prev,
+        people: prev.people.filter((p) => p.id !== id),
+        expenses: cleaned,
+      };
+    });
     pendingOps.current++;
     const ok = await removePersonFromTrip(tripId, id);
     if (!ok) {

@@ -2,7 +2,7 @@
 
 import { useState, useRef, useCallback, useEffect } from "react";
 import { Button, Card, CardBody, Divider } from "@heroui/react";
-import { Trip } from "@/lib/types";
+import { Trip, getPayers } from "@/lib/types";
 import { minimizeTransactions, calculateBalances } from "@/lib/settle";
 import QRCode from "qrcode";
 import html2canvas from "html2canvas";
@@ -259,19 +259,23 @@ export default function Settlement({ trip, tripId }: Props) {
               <h4 className="font-semibold text-default-700 mb-1 text-xs uppercase tracking-wide">
                 Expenses
               </h4>
-              {trip.expenses.map((e, i) => (
-                <div
-                  key={i}
-                  className="flex justify-between text-default-600 py-0.5"
-                >
-                  <span className="mr-2 break-words min-w-0">
-                    {e.description} ({getName(e.paidBy)})
-                  </span>
-                  <span className="shrink-0">
-                    &#8369;{formatAmount(e.amount)}
-                  </span>
-                </div>
-              ))}
+              {trip.expenses.map((e, i) => {
+                const payers = getPayers(e);
+                const payerNames = payers.map((p) => getName(p.id)).join(", ");
+                return (
+                  <div
+                    key={i}
+                    className="flex justify-between text-default-600 py-0.5"
+                  >
+                    <span className="mr-2 break-words min-w-0">
+                      {e.description} ({payerNames})
+                    </span>
+                    <span className="shrink-0">
+                      &#8369;{formatAmount(e.amount)}
+                    </span>
+                  </div>
+                );
+              })}
               <div className="flex justify-between font-semibold text-default-800 pt-1.5 border-t border-default-200 mt-1.5">
                 <span>Total</span>
                 <span>&#8369;{formatAmount(total)}</span>

@@ -1,4 +1,4 @@
-import { Expense, Person, Settlement } from "./types";
+import { Expense, Person, Settlement, getPayers } from "./types";
 
 export function calculateBalances(
   people: Person[],
@@ -10,8 +10,14 @@ export function calculateBalances(
   for (const expense of expenses) {
     if (expense.splitBetween.length === 0) continue;
     const perPerson = expense.amount / expense.splitBetween.length;
-    if (balances[expense.paidBy] === undefined) continue;
-    balances[expense.paidBy] += expense.amount;
+
+    // Credit each payer their individual amount
+    for (const payer of getPayers(expense)) {
+      if (balances[payer.id] !== undefined) {
+        balances[payer.id] += payer.amount;
+      }
+    }
+
     for (const personId of expense.splitBetween) {
       if (balances[personId] !== undefined) {
         balances[personId] -= perPerson;

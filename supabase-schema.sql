@@ -50,22 +50,39 @@ end;
 $$ language plpgsql;
 
 -- Remove person: atomic remove + expense cleanup
+-- Handles both legacy string paidBy and new array paidBy format
 create or replace function remove_trip_person(p_trip_id text, p_person_id text)
 returns void as $$
 declare
   current_expenses jsonb;
   expense jsonb;
   new_splits jsonb;
+  new_paid_by jsonb;
   result_expenses jsonb := '[]'::jsonb;
 begin
   select expenses into current_expenses
   from trips where id = p_trip_id;
 
-  -- Rebuild expenses: remove where person paid, filter from splitBetween
+  -- Rebuild expenses: handle both paidBy formats, filter from splitBetween
   for expense in select * from jsonb_array_elements(current_expenses)
   loop
-    if expense->>'paidBy' = p_person_id then
-      continue;
+    -- Handle paidBy: string (legacy) or array (multi-payer)
+    if jsonb_typeof(expense->'paidBy') = 'string' then
+      -- Legacy format: skip expense if this person was the sole payer
+      if expense->>'paidBy' = p_person_id then
+        continue;
+      end if;
+    else
+      -- Array format: filter out the person from payers
+      select coalesce(jsonb_agg(payer), '[]'::jsonb) into new_paid_by
+      from jsonb_array_elements(expense->'paidBy') payer
+      where payer->>'id' != p_person_id;
+
+      if jsonb_array_length(new_paid_by) = 0 then
+        continue;
+      end if;
+
+      expense := jsonb_set(expense, '{paidBy}', new_paid_by);
     end if;
 
     select coalesce(jsonb_agg(to_jsonb(s)), '[]'::jsonb) into new_splits

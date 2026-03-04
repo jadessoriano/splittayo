@@ -1,8 +1,8 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Button, Card, CardBody, Chip, Input, Select, SelectItem } from "@heroui/react";
-import { Person, Expense } from "@/lib/types";
+import { useState, useEffect, useMemo } from "react";
+import { Button, Card, CardBody, Chip, Input } from "@heroui/react";
+import { Person, Expense, Payer } from "@/lib/types";
 
 interface Props {
   people: Person[];
@@ -13,44 +13,120 @@ interface Props {
 export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
   const [description, setDescription] = useState("");
   const [amount, setAmount] = useState("");
-  const [paidBy, setPaidBy] = useState(defaultPaidBy || "");
+  const [paidByIds, setPaidByIds] = useState<string[]>([]);
+  const [customAmounts, setCustomAmounts] = useState<Record<string, string>>({});
   const [splitBetween, setSplitBetween] = useState<string[]>([]);
 
   // Reset paidBy when identity changes
   useEffect(() => {
-    setPaidBy(defaultPaidBy || "");
+    setPaidByIds([]);
+    setCustomAmounts({});
   }, [defaultPaidBy]);
 
+  const parsedAmount = parseFloat(amount) || 0;
+
+  // Calculate even split for payers
+  const evenSplit = useMemo(() => {
+    if (paidByIds.length === 0 || parsedAmount <= 0) return 0;
+    return Math.round((parsedAmount / paidByIds.length) * 100) / 100;
+  }, [paidByIds.length, parsedAmount]);
+
+  // Check if any custom amounts are set
+  const hasCustomAmounts = Object.values(customAmounts).some((v) => v !== "");
+
+  // Get the effective amount for a payer
+  const getPayerAmount = (id: string): number => {
+    if (!hasCustomAmounts) return evenSplit;
+    const custom = parseFloat(customAmounts[id] || "");
+    return isNaN(custom) ? evenSplit : custom;
+  };
+
+  // Sum of all payer amounts
+  const payerTotal = useMemo(() => {
+    return paidByIds.reduce((sum, id) => sum + getPayerAmount(id), 0);
+  }, [paidByIds, customAmounts, evenSplit, hasCustomAmounts]);
+
+  const amountMismatch = paidByIds.length > 1 && hasCustomAmounts && Math.abs(payerTotal - parsedAmount) > 0.01;
+
   const handleSubmit = () => {
-    const parsedAmount = parseFloat(amount);
-    if (!description.trim() || !parsedAmount || !paidBy || splitBetween.length === 0)
+    if (!description.trim() || parsedAmount <= 0 || paidByIds.length === 0 || splitBetween.length === 0)
       return;
+
+    const payers: Payer[] = paidByIds.map((id) => ({
+      id,
+      amount: getPayerAmount(id),
+    }));
 
     onAdd({
       description: description.trim(),
       amount: parsedAmount,
-      paidBy,
+      paidBy: payers,
       splitBetween,
     });
 
     setDescription("");
     setAmount("");
-    setPaidBy(defaultPaidBy || "");
+    setPaidByIds([]);
+    setCustomAmounts({});
     setSplitBetween([]);
   };
 
-  const togglePerson = (id: string) => {
-    setSplitBetween((prev) =>
-      prev.includes(id) ? prev.filter((p) => p !== id) : [...prev, id]
-    );
+  const togglePayer = (id: string) => {
+    setPaidByIds((prev) => {
+      const adding = !prev.includes(id);
+      const next = adding ? [...prev, id] : prev.filter((p) => p !== id);
+      // When adding a payer, also add them to splitBetween
+      if (adding) {
+        setSplitBetween((sb) => (sb.includes(id) ? sb : [...sb, id]));
+      }
+      // Clear custom amounts for removed payers
+      if (!adding) {
+        setCustomAmounts((ca) => {
+          const copy = { ...ca };
+          delete copy[id];
+          return copy;
+        });
+      }
+      return next;
+    });
   };
 
-  const selectAll = () => {
-    setSplitBetween(people.map((p) => p.id));
+  const toggleSplit = (id: string) => {
+    setSplitBetween((prev) => {
+      const removing = prev.includes(id);
+      const next = removing ? prev.filter((p) => p !== id) : [...prev, id];
+      // If removing from split, also remove from payers
+      if (removing) {
+        setPaidByIds((payers) => payers.filter((p) => p !== id));
+        setCustomAmounts((ca) => {
+          const copy = { ...ca };
+          delete copy[id];
+          return copy;
+        });
+      }
+      return next;
+    });
   };
+
+  const selectAllSplit = () => {
+    if (splitBetween.length === people.length) {
+      setSplitBetween([]);
+      setPaidByIds([]);
+      setCustomAmounts({});
+    } else {
+      setSplitBetween(people.map((p) => p.id));
+    }
+  };
+
+  const formatAmount = (n: number) =>
+    n.toLocaleString("en-PH", { minimumFractionDigits: 2 });
 
   const isValid =
-    description.trim() && parseFloat(amount) > 0 && paidBy && splitBetween.length > 0;
+    description.trim() &&
+    parsedAmount > 0 &&
+    paidByIds.length > 0 &&
+    splitBetween.length > 0 &&
+    !amountMismatch;
 
   return (
     <Card shadow="sm">
@@ -77,26 +153,83 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
           }
         />
 
-        <Select
-          label="Who paid?"
-          selectedKeys={paidBy ? [paidBy] : []}
-          onSelectionChange={(keys) => {
-            const selected = Array.from(keys)[0];
-            if (selected) setPaidBy(String(selected));
-          }}
-          size="sm"
-          variant="bordered"
-        >
-          {people.map((p) => (
-            <SelectItem key={p.id}>{p.name}</SelectItem>
-          ))}
-        </Select>
+        {/* Who paid — multi-select chips */}
+        <div>
+          <div className="flex items-center justify-between mb-2">
+            <span className="text-sm text-default-600">Who paid?</span>
+            <Button size="sm" variant="light" color="primary" onPress={() => {
+              if (paidByIds.length === people.length) {
+                setPaidByIds([]);
+                setCustomAmounts({});
+              } else {
+                setPaidByIds(people.map((p) => p.id));
+                setSplitBetween((sb) => {
+                  const all = new Set(sb);
+                  people.forEach((p) => all.add(p.id));
+                  return Array.from(all);
+                });
+              }
+            }}>
+              {paidByIds.length === people.length ? "Unselect all" : "Select all"}
+            </Button>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            {people.map((p) => (
+              <Chip
+                key={p.id}
+                color={paidByIds.includes(p.id) ? "primary" : "default"}
+                variant={paidByIds.includes(p.id) ? "solid" : "bordered"}
+                className="cursor-pointer"
+                onClick={() => togglePayer(p.id)}
+              >
+                {p.name}
+              </Chip>
+            ))}
+          </div>
 
+          {/* Show per-payer amounts when multiple payers */}
+          {paidByIds.length > 1 && parsedAmount > 0 && (
+            <div className="mt-2 space-y-1.5">
+              <div className="flex items-center justify-between">
+                <span className="text-xs text-default-400">
+                  Even split: &#8369;{formatAmount(evenSplit)} each
+                </span>
+              </div>
+              {paidByIds.map((id) => {
+                const name = people.find((p) => p.id === id)?.name || "Unknown";
+                return (
+                  <div key={id} className="flex items-center gap-2">
+                    <span className="text-sm text-default-600 w-20 truncate">{name}</span>
+                    <Input
+                      type="number"
+                      size="sm"
+                      variant="bordered"
+                      placeholder={formatAmount(evenSplit)}
+                      value={customAmounts[id] || ""}
+                      onChange={(e) =>
+                        setCustomAmounts((prev) => ({ ...prev, [id]: e.target.value }))
+                      }
+                      startContent={<span className="text-default-400 text-xs">&#8369;</span>}
+                      className="flex-1"
+                    />
+                  </div>
+                );
+              })}
+              {amountMismatch && (
+                <p className="text-xs text-danger">
+                  Payer amounts (&#8369;{formatAmount(payerTotal)}) don&apos;t match total (&#8369;{formatAmount(parsedAmount)})
+                </p>
+              )}
+            </div>
+          )}
+        </div>
+
+        {/* Split between */}
         <div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-sm text-default-600">Split between</span>
-            <Button size="sm" variant="light" color="primary" onPress={selectAll}>
-              Select all
+            <Button size="sm" variant="light" color="secondary" onPress={selectAllSplit}>
+              {splitBetween.length === people.length ? "Unselect all" : "Select all"}
             </Button>
           </div>
           <div className="flex flex-wrap gap-2">
@@ -106,7 +239,7 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
                 color={splitBetween.includes(p.id) ? "secondary" : "default"}
                 variant={splitBetween.includes(p.id) ? "solid" : "bordered"}
                 className="cursor-pointer"
-                onClick={() => togglePerson(p.id)}
+                onClick={() => toggleSplit(p.id)}
               >
                 {p.name}
               </Chip>
@@ -115,10 +248,10 @@ export default function ExpenseForm({ people, onAdd, defaultPaidBy }: Props) {
         </div>
 
         <Button
-          color="primary"
           onPress={handleSubmit}
           isDisabled={!isValid}
           fullWidth
+          className="bg-rose-500 text-white font-medium shadow-md disabled:opacity-50 disabled:shadow-none"
         >
           Add Expense
         </Button>
