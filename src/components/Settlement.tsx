@@ -217,7 +217,7 @@ export default function Settlement({ trip, tripId }: Props) {
           <div className="flex flex-col items-center p-4 bg-default-50 rounded-xl">
             <img src={qrDataUrl} alt="QR Code" className="w-48 h-48" />
             <p className="text-xs text-default-500 mt-2">
-              Scan to view the breakdown
+              Scan to open this trip
             </p>
           </div>
         )}
