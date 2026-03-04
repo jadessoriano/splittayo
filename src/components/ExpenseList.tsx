@@ -88,14 +88,16 @@ export default function ExpenseList({ expenses, people, onRemove, onEdit, editin
               {onRemove && (
                 <div className="ml-2 shrink-0 flex items-center gap-1">
                   {confirmId === expense.id ? (
-                    <Button
-                      size="sm"
-                      color="danger"
-                      variant="flat"
-                      onPress={() => handleRemove(expense.id)}
-                    >
-                      Remove?
-                    </Button>
+                    <div onClick={(e) => e.stopPropagation()}>
+                      <Button
+                        size="sm"
+                        color="danger"
+                        variant="flat"
+                        onPress={() => handleRemove(expense.id)}
+                      >
+                        Remove?
+                      </Button>
+                    </div>
                   ) : (
                     <button
                       onClick={(e) => {
