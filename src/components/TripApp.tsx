@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { Button, Chip, Input, Spinner } from "@heroui/react";
+import { Button, Card, CardBody, Chip, Input, Spinner } from "@heroui/react";
 import { Trip, Person, Expense } from "@/lib/types";
 import {
   getTrip,
@@ -301,9 +301,9 @@ export default function TripApp({ tripId }: Props) {
 
   return (
     <div className="min-h-screen bg-default-50">
-      {/* Error toast */}
+      {/* Toast */}
       {toast && (
-        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 bg-danger-500 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium animate-appearance-in max-w-[90vw] text-center">
+        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-50 text-white px-4 py-2 rounded-xl shadow-lg text-sm font-medium animate-appearance-in max-w-[90vw] text-center ${toast.startsWith("Failed") ? "bg-danger-500" : "bg-secondary-500"}`}>
           {toast}
         </div>
       )}
@@ -357,6 +357,41 @@ export default function TripApp({ tripId }: Props) {
           onAdd={addPerson}
           onRemove={removePerson}
         />
+
+        {trip.people.length === 1 && (
+          <Card shadow="sm">
+            <CardBody className="gap-2 p-4 text-center">
+              <p className="text-sm text-default-600">
+                Share this link so your friends can join and add their own expenses
+              </p>
+              <Button
+                color="secondary"
+                variant="flat"
+                size="sm"
+                onPress={async () => {
+                  const url = `${window.location.origin}/trip/${tripId}`;
+                  try {
+                    await navigator.clipboard.writeText(url);
+                    setToast("Link copied!");
+                    setTimeout(() => setToast(null), 2000);
+                  } catch {
+                    // fallback
+                    const input = document.createElement("input");
+                    input.value = url;
+                    document.body.appendChild(input);
+                    input.select();
+                    document.execCommand("copy");
+                    document.body.removeChild(input);
+                    setToast("Link copied!");
+                    setTimeout(() => setToast(null), 2000);
+                  }
+                }}
+              >
+                Copy invite link
+              </Button>
+            </CardBody>
+          </Card>
+        )}
 
         {trip.people.length >= 2 && (
           <ExpenseForm

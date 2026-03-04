@@ -76,9 +76,11 @@ export default function PeopleManager({
               {confirmId === person.id ? `Remove ${person.name}?` : person.name}
             </Chip>
           ))}
-          {people.length === 0 && (
+          {people.length < 2 && (
             <p className="text-default-400 text-sm">
-              Add at least 2 people to start
+              {people.length === 0
+                ? "Add at least 2 people to start"
+                : "Add 1 more person to start splitting"}
             </p>
           )}
         </div>
